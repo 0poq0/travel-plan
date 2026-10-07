@@ -2,6 +2,15 @@
 
 基于 **LangChain + LangGraph + FastAPI** 构建的智能旅行规划助手，直调高德地图 Web 服务 API，提供个性化的多日旅行计划生成，并内置 **RAG 知识库检索**与**行程历史记录持久化**。
 
+> 📄 **许可与来源**
+>
+> 本项目采用 **[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)**（署名 — 非商业性使用 — 相同方式共享），
+> **禁止商业使用**，且衍生作品必须使用同一许可。
+>
+> 本项目是基于 [HelloAgents](https://github.com/datawhalechina/hello-agents) 教程第十三章
+> `helloagents-trip-planner` 的**衍生作品（重构扩展）**，原项目同样采用 CC BY-NC-SA 4.0。
+> 感谢原作者的开放分享。详见 [License 与署名](#-license-与署名)。
+
 > ⚠️ **数据来源与口径说明（请先阅读）**
 >
 > 本项目所有 POI、天气、距离数据均来自**高德地图开放平台**，使用前需自行申请 API Key。
@@ -520,11 +529,45 @@ CI 会自动执行以上检查。几点约定：
    但具体选哪些景点是模型决定的。
 8. **仅覆盖中国大陆城市** — 依赖高德 POI 数据。
 
-## 📄 License
+## 📄 License 与署名
 
-[MIT](LICENSE) © 2026 langchain-trip-planner contributors
+本项目采用 **[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)**
+（署名 — 非商业性使用 — 相同方式共享 4.0 国际）许可，全文见 [LICENSE](LICENSE)。
 
-使用时请遵守[高德开放平台服务条款](https://lbs.amap.com/)与所选用 LLM 服务商的条款。
+三项条款的含义：
+
+| 条款 | 要求 |
+|---|---|
+| **BY 署名** | 转载/改编时须标注原作者与本项目 |
+| **NC 非商业** | **不得用于商业目的** |
+| **SA 相同方式共享** | 基于本项目的衍生作品**必须**同样采用 CC BY-NC-SA 4.0 |
+
+### 来源与衍生关系（署名）
+
+本项目是以下开源项目的**衍生作品（改编/重构）**，依 CC BY-NC-SA 4.0 的署名要求在此声明：
+
+- **helloagents-trip-planner** — 来自 [HelloAgents](https://github.com/datawhalechina/hello-agents)
+  教程第十三章《智能旅行助手》，原项目同样采用 CC BY-NC-SA 4.0。
+  本项目在其基础上做了大量重构与功能扩展（详见下方"本项目的主要工作"）。
+
+> 由于原项目采用 CC BY-NC-SA 4.0，其 **SA（相同方式共享）条款具有传染性**：
+> 任何基于本项目的衍生作品**也必须**使用 CC BY-NC-SA 4.0，
+> 且**不得用于商业目的**。请勿将本项目代码用于闭源商业产品。
+
+### 本项目的主要工作
+
+在上述原项目基础上新增/重写的内容（详见 git 历史）：
+
+- 景点智能筛选（类型编码白/黑名单、父子 POI 迭代剪枝、景点榜单加权）
+- 餐厅候选推荐（榜单词多路召回 + 加权打分 + 候选池缓存）
+- 独立选酒店流程（按档次筛选 + 地图标点 + 全程同一家酒店）
+- 分时段行程结构（上午/午餐/下午/晚餐/夜间）与四道后置兜底规则
+- RAG 知识库检索与历史记录持久化
+- 前端整体重做（Vue3 + TS，选酒店页 + 分时段时间轴）
+- 配置集中化与热重载接口
+- 测试体系（51 项）与开源工程化（CI、LICENSE、文档）
+
+使用时另请遵守[高德开放平台服务条款](https://lbs.amap.com/)与所选用 LLM 服务商的条款。
 
 ## 🙏 文档和资源
 
@@ -534,5 +577,6 @@ CI 会自动执行以上检查。几点约定：
 - [高德开放平台](https://lbs.amap.com/) - 地图服务
 - [阿里云百炼 DashScope](https://bailian.console.aliyun.com) - 千问 embedding 模型
 - [ChromaDB](https://github.com/chroma-core/chroma) - 向量数据库
-- [HelloAgents](https://github.com/datawhalechina/hello-agents) - 原版项目（本项目的重构起点）
+- [HelloAgents](https://github.com/datawhalechina/hello-agents) - **本项目所基于的原项目**
+  （第十三章 `helloagents-trip-planner`，CC BY-NC-SA 4.0）。感谢 datawhalechina 社区的开放分享。
 
