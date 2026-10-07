@@ -2,29 +2,81 @@
 
 基于 **LangChain + LangGraph + FastAPI** 构建的智能旅行规划助手，直调高德地图 Web 服务 API，提供个性化的多日旅行计划生成，并内置 **RAG 知识库检索**与**行程历史记录持久化**。
 
+> ⚠️ **数据来源与口径说明（请先阅读）**
+>
+> 本项目所有 POI、天气、距离数据均来自**高德地图开放平台**，使用前需自行申请 API Key。
+> 以下几处是**高德接口的能力边界**，项目已做适配，使用时请知悉：
+>
+> - **高德不提供酒店房价**：`biz_ext.cost` 与 `lowest_price` 恒为空数组，全字段扫描无价格语义字段。
+>   因此酒店**无法按价格筛选**，项目改为按 POI 类型类目 + 评分区分档次，价目仅用于预算估算。
+> - **高德不提供景点营业时间**：景点类 POI 的 `opentime` 基本为空，故"夜间可去景点"是用
+>   关键词代理（夜游/灯光秀/夜市）筛选的结果，**不保证该景点夜间确实开放**。
+> - **"景点榜单"为近似口径**：高德「扫街榜」没有开放 API。项目用榜单词（状元榜/必玩榜/
+>   本地人爱去/烟火小店）作为**关键词召回信号**，再按可配置权重自行打分排序，
+>   **不等价于高德 App 内的官方榜单排名**。评分/人均消费/招牌菜等字段本身是高德真实数据。
+> - **门票价格由模型估算**：景点类 POI 不返回票价，`ticket_price` 为 LLM 估算值。
+>
+> 请遵守[高德开放平台服务条款](https://lbs.amap.com/)使用数据，勿用于商业转售等高德禁止的场景。
+
 
 ## ✨ 功能特点
 
-- 🤖 **LangGraph 工作流编排**: 用 StateGraph 构建多节点旅行规划流水线（搜景点 → 查天气 → 搜酒店 → 生成行程 → 兜底），支持条件路由
+- 🤖 **LangGraph 工作流编排**: 用 StateGraph 构建多节点旅行规划流水线，支持条件路由与 LLM 失败兜底
+- 🗺️ **景点智能筛选**: 按高德类型编码做白/黑名单过滤，**排除餐厅、KTV、酒吧、洗浴中心等非游览场所**；
+  保留红军纪念馆、烈士陵园等红色景点（靠 `110210 红色景区` 编码识别，避免被"丧葬设施"类目误杀）
+- 🌳 **父子 POI 迭代剪枝**: 依据高德 `parent` 字段链式剔除"北京动物园-北区-狮虎山"这类场馆内部子项
+- 🏆 **景点榜单加权**: 命中状元榜/必玩榜的景点优先展示，并保证每天至少一个知名景点
+- 🍽️ **餐厅候选（不代选）**: 按「状元榜/本地人爱去/烟火小店」三路召回 + 距离/评分/菜系加权排序，
+  返回含**招牌菜、人均、距离、榜单命中**的候选列表，由用户自行挑选；支持价位区间筛选
+- 🏨 **独立选酒店页**: 首页选住宿档次 → 独立页面列出该档次酒店 + **地图标点** → 选定后全程只住这一家，
+  景点按到该酒店的距离排序（距离只作参考，不排除天坛/故宫这类关键名胜）
+- 📅 **分时段行程**: 上午 / 午餐 / 下午 / 晚餐 / **夜间四段结构**，每段数量由后置规则强制保证
 - 🧠 **RAG 知识库检索增强**: 内置 4 城市旅游知识库（深圳/北京/上海/广州，含门票/交通/避坑/美食/住宿），千问 `text-embedding-v4` 向量化存入 ChromaDB，规划时自动检索并注入 LLM
-- 🏆 **知识库景点落地**: 知识库知名景点按名搜索补真实坐标进入行程候选；生成后每个景点自动回填门票/开放时间/交通/避坑详情
 - 📜 **行程历史记录**: SQLite 持久化每次生成的行程，支持分页查询、按城市筛选、查看、编辑、删除；**编辑修改可写回数据库**
-- 🗺️ **高德地图直调**: httpx 直接调用高德 Web 服务 REST API，无外部 MCP 进程依赖
+- 🔧 **全参数外置 + 热重载**: 榜单权重、距离尺度、类目黑白名单、缓存 TTL 等全部在 `config.py`；
+  提供 `/api/admin/reload-config` 与 `/api/admin/clear-cache`，**调参无需重启后端**
 - 📸 **国内图源**: 景点图片优先取高德 POI 实景图（国内 CDN，快且稳），带 QPS 节流与熔断保护
 - 🛡️ **优雅降级**: 数据节点失败返回空列表、LLM 失败走备用计划、RAG 未配置 Key 自动禁用，保证接口始终可用
-- 🧱 **企业级工程化**: 日志落盘与轮转、全局异常处理、Prometheus 监控、Docker 一键部署、pytest 自动化测试
 - 🔌 **兼容任意模型**: 换 LLM 只需改 `.env` 三个参数（Key / Base URL / Model），无需改代码
 - 🎨 **现代化前端**: Vue3 + TypeScript + Vite + Ant Design Vue，深空霓虹渐变主题 + 玻璃拟态卡片
 
+### 设计取向：后置强制校正，而非依赖提示词
+
+行程质量不靠"在提示词里写要求然后祈祷 LLM 照做"，而是生成后由规则强制校正：
+
+| 兜底规则 | 作用 |
+|---|---|
+| `_dedupe_attractions` | 全行程景点不重复（LLM 会把同一景点排进多天/多时段） |
+| `_ensure_evening_plans` | 每天恰好 N 个夜间景点：多了裁、空了补 |
+| `_ensure_famous_per_day` | 每天至少 1 个知名景点（榜单命中），避免行程里没有名胜 |
+| `_ensure_slot_counts` | 上午/下午各 N 个景点，数量不足自动补齐 |
+| `_optimize_itinerary_distance` | 按距离就近重排当日景点（最近邻，**只改顺序不增删**） |
+
 ## 📸 界面预览
+
+**① 首页** — 填写城市、日期、住宿档次与旅行偏好（六类）
 
 ![首页 - 旅行需求表单](docs/screenshots/home.png)
 
-![行程结果页 - 每日行程与地图](docs/screenshots/result.png)
+**② 选择住宿酒店** — 按首页所选档次列候选酒店，右侧地图标出全部酒店位置，选定后全程只住这一家
 
-![行程结果页 - 行程详情](docs/screenshots/result1.png)
+![选择酒店 - 列表与地图标点](docs/screenshots/select-hotel.png)
 
-![历史记录页 - 历史行程管理](docs/screenshots/history.png)
+**③ 行程总览地图** — 当天景点与住宿位置分布
+
+![行程结果 - 景点地图](docs/screenshots/result-map.png)
+
+**④ 分时段行程 · 上午** — 上午景点（每天2个）
+
+![行程结果 - 上午行程](docs/screenshots/result-morning.png)
+
+**⑤ 午餐餐厅候选** — 点击展开景点周边餐厅列表：含招牌菜、人均、距离与榜单命中；拖动价位滑块筛选（候选池已缓存，不重复请求高德）
+
+![行程结果 - 午餐餐厅候选](docs/screenshots/result-restaurant.png)
+
+**⑥ 分时段行程 · 下午** — 午餐后进入下午景点（每天2个），晚餐后另有夜间行程
+
+![行程结果 - 下午行程](docs/screenshots/result-afternoon.png)
 
 ## 🏗️ 技术栈
 
@@ -86,11 +138,16 @@ langchain-trip-planner/
 │   │   │   └── routes/
 │   │   │       ├── trip.py        # 旅行规划(生成后自动存历史+RAG入库)
 │   │   │       ├── map.py         # 地图/天气/路线
-│   │   │       ├── poi.py         # 景点图片
+│   │   │       ├── poi.py         # 景点图片 + 景点周边餐厅候选
+│   │   │       ├── hotel.py       # 按住宿档次列酒店(选酒店页用)
+│   │   │       ├── admin.py       # 清缓存 / 热重载配置
 │   │   │       ├── history.py     # 历史记录 CRUD
 │   │   │       └── rag.py         # RAG 状态/重建
 │   │   ├── services/              # 服务层
-│   │   │   ├── amap_service.py    # 高德 REST API 客户端
+│   │   │   ├── amap_service.py    # 高德 REST API 客户端(含 QPS 节流与重试)
+│   │   │   ├── attraction_service.py  # 景点筛选: 白/黑名单 + 父子POI剪枝 + 榜单加权
+│   │   │   ├── hotel_service.py   # 酒店: 按档次筛选(高德无房价, 用类型+评分)
+│   │   │   ├── restaurant_service.py  # 餐厅候选: 榜单召回 + 打分 + 候选池缓存
 │   │   │   ├── llm_service.py     # ChatOpenAI 工厂
 │   │   │   ├── rag_service.py     # RAG: 知识索引+检索+上下文注入
 │   │   │   └── history_service.py # 历史记录: SQLite CRUD
@@ -102,7 +159,7 @@ langchain-trip-planner/
 │   │   │   └── exceptions.py      # 业务异常与全局异常处理器
 │   │   ├── models/                # Pydantic 数据模型
 │   │   │   └── schemas.py
-│   │   └── config.py              # 配置管理 (pydantic-settings)
+│   │   └── config.py              # 配置管理: 所有可调参数集中于此
 │   ├── data/                      # 运行时数据
 │   │   ├── knowledge/             # RAG 知识库文档(4城市, 需入库保留)
 │   │   │   ├── shenzhen.md
@@ -111,12 +168,14 @@ langchain-trip-planner/
 │   │   │   └── guangzhou.md
 │   │   ├── chroma/                # ChromaDB 向量库(运行时生成, 已 gitignore)
 │   │   └── trip_planner.db        # SQLite 历史数据库(运行时生成, 已 gitignore)
-│   ├── tests/                     # pytest 自动化测试(隔离真实网络)
-│   │   ├── conftest.py
+│   ├── tests/                     # pytest 自动化测试(默认离线, 无需密钥)
+│   │   ├── conftest.py            # 假密钥隔离 + live 标记机制
 │   │   ├── test_health.py
 │   │   ├── test_trip_route.py
 │   │   ├── test_exceptions.py
-│   │   └── test_amap_service.py
+│   │   ├── test_amap_service.py   # 高德客户端(monkeypatch, 样例响应)
+│   │   ├── test_attraction_rules.py   # 景点白/黑名单、父子剪枝、红色景点保留
+│   │   └── test_itinerary_rules.py    # 去重/夜间/名称保底/数量补齐/距离重排
 │   ├── logs/                      # 运行日志(自动生成, 已 gitignore)
 │   ├── run.py                     # 启动脚本
 │   ├── Dockerfile
@@ -125,11 +184,14 @@ langchain-trip-planner/
 │   └── .env                       # 环境变量(已 gitignore)
 ├── frontend/                       # 前端应用
 │   ├── src/
+│   │   ├── components/            # AttractionSlot.vue / MealPicker.vue
 │   │   ├── services/              # API 服务
 │   │   ├── types/                 # TypeScript 类型
-│   │   └── views/                 # Home.vue / Result.vue / History.vue
+│   │   └── views/                 # Home / HotelSelect / Result / History
 │   ├── package.json
 │   └── vite.config.ts
+├── .github/workflows/ci.yml        # CI: 后端测试 + 前端类型检查与构建
+├── LICENSE                         # MIT
 └── README.md
 ```
 
@@ -222,24 +284,33 @@ docker compose down            # 停止并移除容器
 
 ```bash
 cd backend
-pytest -v
+pytest -q                 # 默认只跑离线测试，不需要任何真实密钥
+pytest -m live            # 只跑需要真实密钥与网络的测试（会消耗高德配额）
 ```
 
-测试使用 mock 环境变量隔离真实网络，**不会发出任何真实的高德/LLM 请求**，可放心本地运行。
+测试通过**假密钥 + monkeypatch** 隔离真实网络，**不会发出任何真实的高德/LLM 请求**，可放心本地运行。
+
+需要真实外部 API 的测试已标记 `@pytest.mark.live`，默认自动跳过 —— 因此 CI 无需配置任何密钥。
 
 ## 📝 使用指南
 
-1. 在首页填写旅行信息：目的地城市、旅行日期/天数、交通与住宿偏好、旅行风格
-2. 点击"生成旅行计划"
-3. 后端 LangGraph 工作流按序执行：
-   - 搜景点（高德 POI 搜索 + **RAG 知识库景点补充**）
-   - 查天气（高德天气，覆盖行程首日 +3 天）
-   - 搜酒店（高德 POI 搜索）
+1. **首页**填写旅行信息：目的地城市、旅行日期/天数、交通方式、**住宿档次**、**旅行偏好**
+   （红色精神 / 自然风景 / 人文风光 / 博物馆藏 / 动物世界 / 游乐场）
+2. 点击下一步 → 进入**「选择住宿酒店」页**
+   - 按首页所选档次列出候选酒店（含评分、类型、地址）
+   - **右侧地图标出所有酒店**，点击标记或列表项即可选中
+   - 选定后**整个行程都住这一家**，景点会按到该酒店的距离排序
+3. 点击"开始规划我的旅行"，后端工作流按序执行：
+   - 检索夜间可去景点（关键词代理 + 20km 内筛选，并**为夜间预留名额**避免被白天占用）
+   - 搜景点（偏好定向召回 + 榜单加权 + 类型白/黑名单过滤 + 父子POI剪枝 + 按酒店距离排序）
+   - 查天气（高德天气）
+   - 搜酒店（按档次筛选）
    - **RAG 检索**: 从知识库/历史行程中检索该城市相关知识，注入 LLM Prompt
-   - LLM 生成结构化行程（含每日三餐、交通、住宿、景点时间与预算）
-   - **知识库回填**: 每个景点自动追加门票/开放时间/交通/避坑详情
-   - 任一步失败自动降级，LLM 失败走备用计划
-4. 结果页展示：每日详细行程、景点地图标记与实景图、天气预报、酒店推荐、知识库详情
+   - LLM 生成分段行程（上午 / 午餐 / 下午 / 晚餐 / 夜间）
+   - **后置兜底**: 去重 → 夜间补齐 → 名胜保底 → 数量补齐 → 距离重排
+4. **结果页**展示：分时段行程、景点地图标记与实景图、天气预报、住宿酒店；
+   每个餐段可点击「🔍 查景点周边餐厅」打开候选列表（含**招牌菜/人均/距离/榜单命中**），
+   拖动价位滑块即可筛选（候选池已缓存，**不会重复请求高德**）
 5. **历史行程**: 首页右上角「📜 历史行程」进入历史页，可查看/编辑/删除历史计划；编辑保存后修改会写回数据库
 
 ## 🔧 核心实现
@@ -359,8 +430,15 @@ trip_plan = TripPlan.model_validate(data)       # Pydantic 校验
 | `GET /api/map/weather` | 查询天气 |
 | `POST /api/map/route` | 规划路线 |
 | `GET /api/poi/photo?name=xxx` | 获取景点图片 |
+| `GET /api/poi/restaurants` | **景点周边餐厅候选**（参数: city / lng / lat / meal_type / min_cost / max_cost） |
+| `GET /api/hotel/list` | **按住宿档次列酒店**（参数: city / tier / limit），供选酒店页展示列表与地图打点 |
+| `POST /api/admin/clear-cache` | **清空服务缓存**（餐厅候选池等） |
+| `POST /api/admin/reload-config` | **热重载配置**（改完 `config.py` 调参后调用，无需重启后端） |
 | `GET /health` | 服务健康检查 |
 | `GET /docs` | Swagger 文档 |
+
+> ⚠️ `/api/admin/*` 与 `/api/trip/plan` **均未做鉴权**，仅适合本地运行。
+> 若要公网部署请自行加认证与限流，否则他人可消耗你的 LLM 与高德配额。
 
 ## ❓ 常见问题
 
@@ -406,6 +484,47 @@ LLM_MODEL_ID=新模型名
 
 欢迎提交 Pull Request 或 Issue！
 
+提交前请确保本地通过：
+
+```bash
+# 后端: 跑离线测试(无需密钥)
+cd backend && pytest -q
+
+# 前端: 类型检查 + 构建
+cd frontend && npx vue-tsc --noEmit && npm run build
+```
+
+CI 会自动执行以上检查。几点约定：
+
+- **不要提交任何真实密钥**。`.env` 已在 `.gitignore` 中；示例配置请写占位符 `your_xxx_key_here`。
+- **调整可调参数时优先改 `config.py`**，而不是把数值散落在代码里 —— 本项目所有权重/阈值/白黑名单都集中在该文件，便于他人调参。
+- **改动筛选规则时请补测试**。`tests/test_attraction_rules.py` 与 `tests/test_itinerary_rules.py`
+  固化了逐字段实测高德接口得出的规则（如"餐厅会被标成旅游景点，必须按编码排除"），
+  这些是踩坑得到的结论，破坏它们会造成静默错误。
+- **需要真实外部 API 的测试请加 `@pytest.mark.live`**，默认会被跳过，CI 才能在没有密钥的环境运行。
+
+## ⚠️ 已知限制
+
+以下是当前实现的边界，不是 bug，欢迎改进：
+
+1. **酒店无法按价格筛选** — 高德不返回酒店房价（见开头口径说明）。现按类型类目 + 评分区分档次，
+   价目仅用于预算估算。
+2. **夜间景点不保证夜间开放** — 高德无营业时间数据，现为关键词代理结果。
+3. **景点榜单为近似口径** — 非高德官方扫街榜排名，而是榜单词召回 + 自研加权。
+4. **门票价格为模型估算** — 高德景点类 POI 不返回票价。
+5. **`/api/admin/*` 与 `/api/trip/plan` 无鉴权** — 仅适合本地运行。若要公网部署，
+   请自行加认证并限制调用频率，否则他人可消耗你的 LLM 与高德配额。
+6. **高德个人 Key 有 QPS 限制**（约 3-5），项目已内置全局节流与候选池缓存，
+   但并发多用户场景下需申请更高配额或换企业 Key。
+7. **行程规划依赖 LLM**，同一输入多次生成结果会有差异；关键数量约束由后置兜底保证，
+   但具体选哪些景点是模型决定的。
+8. **仅覆盖中国大陆城市** — 依赖高德 POI 数据。
+
+## 📄 License
+
+[MIT](LICENSE) © 2026 langchain-trip-planner contributors
+
+使用时请遵守[高德开放平台服务条款](https://lbs.amap.com/)与所选用 LLM 服务商的条款。
 
 ## 🙏 文档和资源
 
@@ -416,3 +535,4 @@ LLM_MODEL_ID=新模型名
 - [阿里云百炼 DashScope](https://bailian.console.aliyun.com) - 千问 embedding 模型
 - [ChromaDB](https://github.com/chroma-core/chroma) - 向量数据库
 - [HelloAgents](https://github.com/datawhalechina/hello-agents) - 原版项目（本项目的重构起点）
+
