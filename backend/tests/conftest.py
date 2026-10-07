@@ -24,6 +24,33 @@ from fastapi.testclient import TestClient
 from app.api.main import app
 
 
+def pytest_configure(config):
+    """注册自定义标记
+
+    live: 需要真实外部 API(高德/LLM)与真实密钥的测试。
+    默认跳过 —— CI 环境没有密钥, 且不应在测试中消耗外部配额。
+
+    运行方式:
+        pytest                    # 只跑离线测试(默认)
+        pytest -m live            # 只跑需要真实密钥的测试
+        pytest -m "not live"      # 显式排除(等价于默认)
+    """
+    config.addinivalue_line(
+        "markers",
+        "live: 需要真实高德/LLM 密钥与网络, 默认跳过(用 -m live 单独运行)",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """未显式指定 -m 时, 自动跳过 live 标记的测试"""
+    if config.option.markexpr:
+        return  # 用户已显式指定 -m, 尊重其选择
+    skip_live = pytest.mark.skip(reason="需要真实外部API与密钥, 用 -m live 运行")
+    for item in items:
+        if "live" in item.keywords:
+            item.add_marker(skip_live)
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _isolate_logs():
     """测试期间隔离日志: 移除文件 handler。
