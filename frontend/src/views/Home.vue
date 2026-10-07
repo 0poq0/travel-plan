@@ -149,17 +149,22 @@
                 </template>
                 <div class="preference-tags">
                   <a-checkbox-group v-model:value="formData.preferences" class="custom-checkbox-group">
-                    <a-checkbox value="历史文化" class="preference-tag">🏛️ 历史文化</a-checkbox>
-                    <a-checkbox value="自然风光" class="preference-tag">🏞️ 自然风光</a-checkbox>
-                    <a-checkbox value="美食" class="preference-tag">🍜 美食</a-checkbox>
-                    <a-checkbox value="购物" class="preference-tag">🛍️ 购物</a-checkbox>
-                    <a-checkbox value="艺术" class="preference-tag">🎨 艺术</a-checkbox>
-                    <a-checkbox value="休闲" class="preference-tag">☕ 休闲</a-checkbox>
+                    <a-checkbox value="红色精神" class="preference-tag">🚩 红色精神</a-checkbox>
+                    <a-checkbox value="自然风景" class="preference-tag">🏞️ 自然风景</a-checkbox>
+                    <a-checkbox value="人文风光" class="preference-tag">🏛️ 人文风光</a-checkbox>
+                    <a-checkbox value="博物馆藏" class="preference-tag">🏺 博物馆藏</a-checkbox>
+                    <a-checkbox value="动物世界" class="preference-tag">🐼 动物世界</a-checkbox>
+                    <a-checkbox value="游乐场" class="preference-tag">🎡 游乐场</a-checkbox>
                   </a-checkbox-group>
                 </div>
               </a-form-item>
             </a-col>
           </a-row>
+
+          <!-- 酒店价位区间: 在首页直接指定每晚预算范围 -->
+          <div class="step-hint">
+            👉 下一步：选择具体酒店（按上面选定的住宿档次列出候选，可在页面上看列表与地图）
+          </div>
         </div>
 
         <!-- 第三步:额外要求 -->
@@ -231,7 +236,6 @@
 import { ref, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { generateTripPlan } from '@/services/api'
 import type { TripFormData } from '@/types'
 import type { Dayjs } from 'dayjs'
 
@@ -325,29 +329,20 @@ const handleSubmit = async () => {
       free_text_input: formData.free_text_input
     }
 
-    const response = await generateTripPlan(requestData)
-
+    // 流程: 首页 → 选择酒店页 → 生成行程。
+    // 这里只保存表单并跳转, 行程生成放到酒店选定之后(景点需要按酒店距离筛选)。
+    sessionStorage.setItem('tripFormData', JSON.stringify(requestData))
     clearInterval(progressInterval)
     loadingProgress.value = 100
-    loadingStatus.value = '✅ 完成!'
+    loadingStatus.value = '✅ 信息已填写, 去选酒店'
 
-    if (response.success && response.data) {
-      // 保存到sessionStorage (并清除历史编辑标识, 新规划不受历史影响)
-      sessionStorage.setItem('tripPlan', JSON.stringify(response.data))
-      sessionStorage.removeItem('tripPlanId')
-
-      message.success('旅行计划生成成功!')
-
-      // 短暂延迟后跳转
-      setTimeout(() => {
-        router.push('/result')
-      }, 500)
-    } else {
-      message.error(response.message || '生成失败')
-    }
+    message.success('信息已填写，请选择住宿酒店')
+    setTimeout(() => {
+      router.push('/hotel')
+    }, 300)
   } catch (error: any) {
     clearInterval(progressInterval)
-    message.error(error.message || '生成旅行计划失败,请稍后重试')
+    message.error(error.message || '提交失败,请稍后重试')
   } finally {
     setTimeout(() => {
       loading.value = false
@@ -600,6 +595,47 @@ const handleSubmit = async () => {
   font-size: 18px;
   font-weight: 600;
   color: #333;
+}
+
+/* 酒店价位区间 */
+.hotel-price-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 16px;
+  background: #fff;
+  border: 2px solid #e8e8e8;
+  border-radius: 12px;
+}
+
+.hotel-price-slider {
+  flex: 1;
+  min-width: 200px;
+  margin: 6px 12px;
+}
+
+.hotel-price-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #667eea;
+  white-space: nowrap;
+  min-width: 140px;
+  text-align: right;
+}
+
+.hotel-price-per {
+  font-size: 12px;
+  font-weight: 400;
+  color: #999;
+}
+
+.label-hint {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: #bbb;
+  line-height: 1.5;
+  margin-top: 2px;
 }
 
 /* 表单标签 */

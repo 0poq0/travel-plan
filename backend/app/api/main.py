@@ -11,7 +11,7 @@ from ..config import get_settings, validate_config, print_config
 from ..core.logging import setup_logging
 from ..core.exceptions import BizException, biz_exception_handler, global_exception_handler
 from ..db.database import init_db
-from .routes import trip, poi, map as map_routes, history, rag
+from .routes import trip, poi, map as map_routes, history, rag, admin, hotel
 
 # 初始化日志(幂等): 控制台 + 文件落盘。
 # 必须在 uvicorn 重配日志之前执行; reload 模式下子进程重新 import 本模块时也会执行, 保证任意模式日志可用。
@@ -123,6 +123,8 @@ app.include_router(poi.router, prefix="/api")
 app.include_router(map_routes.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
+app.include_router(hotel.router, prefix="/api")
 
 
 @app.get("/")

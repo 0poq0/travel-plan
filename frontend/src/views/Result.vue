@@ -165,84 +165,70 @@
                 </div>
               </div>
 
-              <!-- 景点安排 -->
-              <a-divider orientation="left">🎯 景点安排</a-divider>
-              <a-list
-                :data-source="day.attractions"
-                :grid="{ gutter: 16, column: 2 }"
-              >
-                <template #renderItem="{ item, index }">
-                  <a-list-item>
-                    <a-card :title="item.name" size="small" class="attraction-card">
-                      <!-- 编辑模式下的操作按钮 -->
-                      <template #extra v-if="editMode">
-                        <a-space>
-                          <a-button
-                            size="small"
-                            @click="moveAttraction(day.day_index, index, 'up')"
-                            :disabled="index === 0"
-                          >
-                            ↑
-                          </a-button>
-                          <a-button
-                            size="small"
-                            @click="moveAttraction(day.day_index, index, 'down')"
-                            :disabled="index === day.attractions.length - 1"
-                          >
-                            ↓
-                          </a-button>
-                          <a-button
-                            size="small"
-                            danger
-                            @click="deleteAttraction(day.day_index, index)"
-                          >
-                            🗑️
-                          </a-button>
-                        </a-space>
-                      </template>
+              <!-- 分时段行程: 上午 → 午餐 → 下午 → 晚餐 → 夜间 -->
+              <a-divider orientation="left">🌅 上午行程</a-divider>
+              <div v-if="day.morning_desc" class="slot-desc">{{ day.morning_desc }}</div>
+              <AttractionSlot
+                :items="day.attractions_morning"
+                :edit-mode="editMode"
+                :photos="attractionPhotos"
+                @move="(i, d) => moveAttraction(day.day_index, 'attractions_morning', i, d)"
+                @remove="i => deleteAttraction(day.day_index, 'attractions_morning', i)"
+              />
 
-                      <!-- 景点图片 -->
-                      <div class="attraction-image-wrapper">
-                        <img
-                          :src="getAttractionImage(item.name, index)"
-                          :alt="item.name"
-                          class="attraction-image"
-                          @error="handleImageError"
-                        />
-                        <div class="attraction-badge">
-                          <span class="badge-number">{{ index + 1 }}</span>
-                        </div>
-                        <div v-if="item.ticket_price" class="price-tag">
-                          ¥{{ item.ticket_price }}
-                        </div>
-                      </div>
+              <!-- 午餐 (夹在上午与下午之间) -->
+              <a-divider orientation="left">🍽️ 午餐</a-divider>
+              <MealPicker
+                v-for="meal in day.meals.filter(m => m.type === 'lunch')"
+                :key="meal.type"
+                :meal="meal"
+                :day-index="day.day_index"
+                :edit-mode="editMode"
+                :picker="getPicker(day.day_index, meal.type)"
+                @load="loadRestaurants(day.day_index, 'lunch')"
+                @change-range="onPriceRangeChange(day.day_index, 'lunch')"
+                @select="c => selectRestaurant(day.day_index, 'lunch', c)"
+              />
 
-                      <!-- 编辑模式下可编辑的字段 -->
-                      <div v-if="editMode">
-                        <p><strong>地址:</strong></p>
-                        <a-input v-model:value="item.address" size="small" style="margin-bottom: 8px" />
+              <a-divider orientation="left">🌇 下午行程</a-divider>
+              <div v-if="day.afternoon_desc" class="slot-desc">{{ day.afternoon_desc }}</div>
+              <AttractionSlot
+                :items="day.attractions_afternoon"
+                :edit-mode="editMode"
+                :photos="attractionPhotos"
+                @move="(i, d) => moveAttraction(day.day_index, 'attractions_afternoon', i, d)"
+                @remove="i => deleteAttraction(day.day_index, 'attractions_afternoon', i)"
+              />
 
-                        <p><strong>游览时长(分钟):</strong></p>
-                        <a-input-number v-model:value="item.visit_duration" :min="10" :max="480" size="small" style="width: 100%; margin-bottom: 8px" />
+              <!-- 晚餐 -->
+              <a-divider orientation="left">🍽️ 晚餐</a-divider>
+              <MealPicker
+                v-for="meal in day.meals.filter(m => m.type === 'dinner')"
+                :key="meal.type"
+                :meal="meal"
+                :day-index="day.day_index"
+                :edit-mode="editMode"
+                :picker="getPicker(day.day_index, meal.type)"
+                @load="loadRestaurants(day.day_index, 'dinner')"
+                @change-range="onPriceRangeChange(day.day_index, 'dinner')"
+                @select="c => selectRestaurant(day.day_index, 'dinner', c)"
+              />
 
-                        <p><strong>描述:</strong></p>
-                        <a-textarea v-model:value="item.description" :rows="2" size="small" style="margin-bottom: 8px" />
-                      </div>
+              <!-- 夜间行程 (晚餐后) -->
+              <template v-if="day.attractions_evening && day.attractions_evening.length">
+                <a-divider orientation="left">🌙 夜间行程</a-divider>
+                <div v-if="day.evening_desc" class="slot-desc">{{ day.evening_desc }}</div>
+                <AttractionSlot
+                  :items="day.attractions_evening"
+                  :edit-mode="editMode"
+                  :photos="attractionPhotos"
+                  @move="(i, d) => moveAttraction(day.day_index, 'attractions_evening', i, d)"
+                  @remove="i => deleteAttraction(day.day_index, 'attractions_evening', i)"
+                />
+              </template>
 
-                      <!-- 查看模式 -->
-                      <div v-else>
-                        <p><strong>地址:</strong> {{ item.address }}</p>
-                        <p><strong>游览时长:</strong> {{ item.visit_duration }}分钟</p>
-                        <p><strong>描述:</strong> <span class="attraction-desc">{{ item.description }}</span></p>
-                        <p v-if="item.rating"><strong>评分:</strong> {{ item.rating }}⭐</p>
-                      </div>
-                    </a-card>
-                  </a-list-item>
-                </template>
-              </a-list>
-
-              <!-- 酒店推荐 -->
-              <a-divider v-if="day.hotel" orientation="left">🏨 住宿推荐</a-divider>
+              <!-- 住宿: 全程同一家 -->
+              <a-divider v-if="day.hotel" orientation="left">🏨 住宿（全程同一家）</a-divider>
               <a-card v-if="day.hotel" size="small" class="hotel-card">
                 <template #title>
                   <span class="hotel-title">{{ day.hotel.name }}</span>
@@ -250,24 +236,11 @@
                 <a-descriptions :column="2" size="small">
                   <a-descriptions-item label="地址">{{ day.hotel.address }}</a-descriptions-item>
                   <a-descriptions-item label="类型">{{ day.hotel.type }}</a-descriptions-item>
-                  <a-descriptions-item label="价格范围">{{ day.hotel.price_range }}</a-descriptions-item>
-                  <a-descriptions-item label="评分">{{ day.hotel.rating }}⭐</a-descriptions-item>
-                  <a-descriptions-item label="距离" :span="2">{{ day.hotel.distance }}</a-descriptions-item>
+                  <a-descriptions-item label="参考价位">{{ day.hotel.price_range || '—' }}</a-descriptions-item>
+                  <a-descriptions-item label="评分">{{ day.hotel.rating || '—' }}</a-descriptions-item>
                 </a-descriptions>
               </a-card>
 
-              <!-- 餐饮安排 -->
-              <a-divider orientation="left">🍽️ 餐饮安排</a-divider>
-              <a-descriptions :column="1" bordered size="small">
-                <a-descriptions-item
-                  v-for="meal in day.meals"
-                  :key="meal.type"
-                  :label="getMealLabel(meal.type)"
-                >
-                  {{ meal.name }}
-                  <span v-if="meal.description"> - {{ meal.description }}</span>
-                </a-descriptions-item>
-              </a-descriptions>
             </a-collapse-panel>
           </a-collapse>
         </a-card>
@@ -333,8 +306,13 @@ import { DownOutlined } from '@ant-design/icons-vue'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import type { TripPlan } from '@/types'
-import { updateHistory } from '@/services/api'
+import type { TripPlan, RestaurantCandidate } from '@/types'
+import { updateHistory, fetchRestaurants } from '@/services/api'
+import AttractionSlot from '@/components/AttractionSlot.vue'
+import MealPicker from '@/components/MealPicker.vue'
+
+/** 景点时段字段名 */
+type SlotKey = 'attractions_morning' | 'attractions_afternoon' | 'attractions_evening'
 
 const router = useRouter()
 const tripPlan = ref<TripPlan | null>(null)
@@ -435,43 +413,217 @@ const cancelEdit = () => {
   message.info('已取消编辑')
 }
 
-// 删除景点
-const deleteAttraction = (dayIndex: number, attrIndex: number) => {
+// 删除景点 (按所在时段)
+const deleteAttraction = (dayIndex: number, slot: SlotKey, attrIndex: number) => {
   if (!tripPlan.value) return
 
   const day = tripPlan.value.days[dayIndex]
-  if (day.attractions.length <= 1) {
-    message.warning('每天至少需要保留一个景点')
+  const list = day[slot] as any[]
+  if (list.length <= 1) {
+    message.warning('该时段至少需要保留一个景点')
     return
   }
 
-  day.attractions.splice(attrIndex, 1)
+  list.splice(attrIndex, 1)
+  refreshMergedAttractions(day)
   message.success('景点已删除')
 }
 
-// 移动景点顺序
-const moveAttraction = (dayIndex: number, attrIndex: number, direction: 'up' | 'down') => {
+// 移动景点顺序 (仅在该时段内部移动, 不跨时段)
+const moveAttraction = (
+  dayIndex: number,
+  slot: SlotKey,
+  attrIndex: number,
+  direction: 'up' | 'down'
+) => {
   if (!tripPlan.value) return
 
   const day = tripPlan.value.days[dayIndex]
-  const attractions = day.attractions
+  const attractions = day[slot] as any[]
 
   if (direction === 'up' && attrIndex > 0) {
     [attractions[attrIndex], attractions[attrIndex - 1]] = [attractions[attrIndex - 1], attractions[attrIndex]]
   } else if (direction === 'down' && attrIndex < attractions.length - 1) {
     [attractions[attrIndex], attractions[attrIndex + 1]] = [attractions[attrIndex + 1], attractions[attrIndex]]
   }
+  refreshMergedAttractions(day)
 }
 
-const getMealLabel = (type: string): string => {
-  const labels: Record<string, string> = {
-    breakfast: '早餐',
-    lunch: '午餐',
-    dinner: '晚餐',
-    snack: '小吃'
-  }
-  return labels[type] || type
+/** 三段景点变动后重新合并, 保证地图与统计使用的是最新数据 */
+const refreshMergedAttractions = (day: any) => {
+  day.attractions = [
+    ...(day.attractions_morning || []),
+    ...(day.attractions_afternoon || []),
+    ...(day.attractions_evening || [])
+  ]
 }
+
+// ============ 餐厅候选择 (景点周边) ============
+// 设计: 系统只给候选列表, 由用户自行选择; 不替用户决定。
+// 榜单为近似口径 —— 后端用「状元榜/本地人爱去/烟火小店」召回高德真实POI
+// 后自行打分排序, 非高德官方扫街榜排名。评分/人均/招牌菜均为高德真实字段。
+
+interface MealPickerState {
+  loading: boolean
+  candidates: RestaurantCandidate[]
+  /** 候选池的人均区间, 用于初始化滑块范围 */
+  bounds: number[]
+  range: number[]
+  total: number
+  loaded: boolean
+  /** 后端候选池缓存命中的标志, 用于提示"未重复请求高德" */
+  cached: boolean
+  scopeNotice: string
+  error: string
+  /** 该餐锚定的景点名, 界面上说明"按哪个景点搜的" */
+  anchorName: string
+}
+
+const mealPickers = ref<Record<string, MealPickerState>>({})
+
+/** 取某个餐段的选择状态 (没有则初始化)。key = dayIndex:mealType */
+const getPicker = (dayIndex: number, mealType: string): MealPickerState => {
+  const key = `${dayIndex}:${mealType}`
+  if (!mealPickers.value[key]) {
+    mealPickers.value[key] = {
+      loading: false,
+      candidates: [],
+      // 默认区间做宽一些, 真正的上下界在首次拿到候选池后按实际数据收敛
+      bounds: [0, 200],
+      range: mealType === 'dinner' ? [50, 200] : [30, 150],
+      total: 0,
+      loaded: false,
+      cached: false,
+      scopeNotice: '',
+      error: '',
+      anchorName: ''
+    }
+  }
+  return mealPickers.value[key]
+}
+
+/**
+ * 取某餐用餐时"所在的那一个景点"作为锚点
+ *
+ * 规则(按用户的行程直觉):
+ *   - 午餐: 上午通常逛前两个景点, 故取当天第 2 个景点; 只有 1 个景点时取第 1 个
+ *   - 晚餐: 一天逛完在最后一个景点附近收尾, 故取当天最后一个景点
+ * 只用一个点, 不做多景点聚合, 与后端"单锚点"设计一致。
+ */
+const getMealAnchor = (
+  dayIndex: number,
+  mealType: string
+): { lng: number; lat: number; name: string } | null => {
+  const day = tripPlan.value?.days[dayIndex]
+  const attractions = day?.attractions || []
+  if (!attractions.length) return null
+
+  let target
+  if (mealType === 'lunch') {
+    target = attractions.length >= 2 ? attractions[1] : attractions[0]
+  } else {
+    target = attractions[attractions.length - 1]
+  }
+  if (!target) return null
+
+  const loc = target.location
+  if (!loc || (!loc.longitude && !loc.latitude)) return null
+  return { lng: loc.longitude, lat: loc.latitude, name: target.name }
+}
+
+/** 加载某餐段的餐厅候选 */
+const loadRestaurants = async (dayIndex: number, mealType: 'lunch' | 'dinner') => {
+  const picker = getPicker(dayIndex, mealType)
+  picker.loading = true
+  picker.error = ''
+  try {
+    const anchor = getMealAnchor(dayIndex, mealType)
+    picker.anchorName = anchor?.name || ''
+    const res = await fetchRestaurants({
+      city: tripPlan.value?.city || '',
+      meal_type: mealType,
+      lng: anchor?.lng,
+      lat: anchor?.lat,
+      min_cost: picker.range[0],
+      max_cost: picker.range[1]
+    })
+    if (!res.success) {
+      picker.error = res.message || '获取候选餐厅失败'
+      return
+    }
+    picker.candidates = res.data
+    picker.total = res.total
+    picker.cached = res.cached
+    picker.scopeNotice = res.message
+    picker.loaded = true
+    // 首次拿到候选池后, 用真实价格区间收敛滑块范围
+    if (res.price_range && res.price_range.length === 2 && res.price_range[1] > 0) {
+      picker.bounds = [
+        Math.floor(res.price_range[0]),
+        Math.ceil(res.price_range[1])
+      ]
+      // 若当前区间把结果全滤空了, 自动放宽到全量区间, 避免用户看到空列表
+      if (!res.data.length) {
+        picker.range = [...picker.bounds]
+        await loadRestaurants(dayIndex, mealType)
+      }
+    }
+  } catch (e: any) {
+    picker.error = e.message || '获取候选餐厅失败'
+  } finally {
+    picker.loading = false
+  }
+}
+
+/** 滑块变化: 候选池已缓存, 重排不打高德, 故可放心实时调用 */
+const onPriceRangeChange = (dayIndex: number, mealType: 'lunch' | 'dinner') => {
+  loadRestaurants(dayIndex, mealType)
+}
+
+/** 选定某家餐厅, 回填到该餐, 并同步刷新预算 */
+const selectRestaurant = (
+  dayIndex: number,
+  mealType: 'lunch' | 'dinner',
+  candidate: RestaurantCandidate
+) => {
+  if (!tripPlan.value) return
+  const day = tripPlan.value.days[dayIndex]
+  const meal = day.meals.find(m => m.type === mealType)
+  if (!meal) return
+
+  meal.name = candidate.name
+  meal.poi_id = candidate.poi_id
+  meal.address = candidate.address
+  meal.location = candidate.location
+  meal.rating = candidate.rating
+  meal.cost = candidate.cost
+  meal.distance = candidate.distance
+  meal.tags = candidate.signature_dishes
+  meal.estimated_cost = candidate.cost
+  meal.selected = true
+  meal.description = `人均约¥${candidate.cost ?? '-'} | 距景点${candidate.distance ?? '-'}米`
+
+  // 选中后收起候选列表
+  getPicker(dayIndex, mealType).loaded = false
+
+  recalcMealBudget()
+  message.success(`已选择「${candidate.name}」`)
+}
+
+/** 同步三餐预算 (选择餐厅后人均消费会变) */
+const recalcMealBudget = () => {
+  if (!tripPlan.value || !tripPlan.value.budget) return
+  const totalMeals = tripPlan.value.days.reduce(
+    (sum, day) => sum + day.meals.reduce((s, m) => s + (m.estimated_cost || 0), 0),
+    0
+  )
+  const b = tripPlan.value.budget
+  b.total_meals = totalMeals
+  b.total = b.total_attractions + b.total_hotels + totalMeals + b.total_transportation
+}
+
+// dishesText / distanceText / getMealLabel 已迁移到 MealPicker 组件,
+// getAttractionImage / handleImageError 已迁移到 AttractionSlot 组件。
 
 // 加载所有景点图片
 const loadAttractionPhotos = async () => {
@@ -499,47 +651,8 @@ const loadAttractionPhotos = async () => {
   await Promise.all(promises)
 }
 
-// 获取景点图片
-const getAttractionImage = (name: string, index: number): string => {
-  // 如果已加载真实图片,返回真实图片
-  if (attractionPhotos.value[name]) {
-    return attractionPhotos.value[name]
-  }
-
-  // 返回一个纯色占位图(避免跨域问题)
-  const colors = [
-    { start: '#667eea', end: '#764ba2' },
-    { start: '#f093fb', end: '#f5576c' },
-    { start: '#4facfe', end: '#00f2fe' },
-    { start: '#43e97b', end: '#38f9d7' },
-    { start: '#fa709a', end: '#fee140' }
-  ]
-  const colorIndex = index % colors.length
-  const { start, end } = colors[colorIndex]
-
-  // 使用base64编码避免中文问题
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">
-    <defs>
-      <linearGradient id="grad${index}" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" style="stop-color:${start};stop-opacity:1" />
-        <stop offset="100%" style="stop-color:${end};stop-opacity:1" />
-      </linearGradient>
-    </defs>
-    <rect width="400" height="300" fill="url(#grad${index})"/>
-    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="24" font-weight="bold" fill="white">${name}</text>
-  </svg>`
-
-  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`
-}
-
-// 图片加载失败时的处理
-const handleImageError = (event: Event) => {
-  const img = event.target as HTMLImageElement
-  // 使用灰色占位图
-  img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect width="400" height="300" fill="%23f0f0f0"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="18" fill="%23999"%3E图片加载失败%3C/text%3E%3C/svg%3E'
-}
-
-
+// getAttractionImage / handleImageError 已在 AttractionSlot 组件中实现,
+// 该组件通过 photos 属性接收这里加载好的图片映射。
 
 // 导出为图片
 const exportAsImage = async () => {
@@ -1477,6 +1590,208 @@ const drawRoutes = (AMap: any, attractions: any[]) => {
   }
 }
 
+/* ============ 餐厅候选择 ============ */
+.meal-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.meal-picker-item {
+  border: 1px solid #e8e8e8;
+  border-radius: 10px;
+  padding: 12px 16px;
+  background: #fafbff;
+}
+
+.meal-selected-main,
+.meal-unselected {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.meal-type-badge {
+  display: inline-block;
+  min-width: 44px;
+  text-align: center;
+  padding: 2px 10px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.meal-rest-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+}
+
+.meal-dishes {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #666;
+}
+
+.meal-hint {
+  color: #999;
+  font-size: 13px;
+  flex: 1;
+}
+
+/* 查景点周边餐厅按钮: 白底黑字 */
+.meal-search-btn {
+  background: #fff !important;
+  color: #333 !important;
+  border: 1px solid #d9d9d9 !important;
+  font-weight: 500;
+}
+
+.meal-search-btn:hover {
+  background: #fff !important;
+  color: #1890ff !important;
+  border-color: #1890ff !important;
+}
+
+.meal-search-btn:active,
+.meal-search-btn:focus {
+  background: #fff !important;
+  color: #333 !important;
+}
+
+.meal-candidates {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #d9d9d9;
+}
+
+/* 价位双滑块 */
+.price-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #eef0f7;
+}
+
+.slider-label {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.price-slider {
+  flex: 1;
+  min-width: 180px;
+  margin: 4px 10px;
+}
+
+.slider-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #667eea;
+  white-space: nowrap;
+  min-width: 90px;
+  text-align: right;
+}
+
+.candidate-summary {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 10px;
+}
+
+.cache-hint {
+  color: #52c41a;
+}
+
+.anchor-hint {
+  color: #667eea;
+  font-weight: 600;
+}
+
+.candidate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.candidate-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #eef0f7;
+  border-radius: 8px;
+  transition: all 0.25s ease;
+}
+
+.candidate-row:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.12);
+}
+
+.candidate-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.candidate-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.candidate-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+}
+
+.candidate-dishes {
+  margin-top: 5px;
+  font-size: 13px;
+  color: #555;
+  line-height: 1.5;
+}
+
+.dishes-label {
+  color: #999;
+}
+
+.candidate-addr {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.meal-error {
+  padding: 12px;
+  color: #cf1322;
+  background: #fff1f0;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.scope-notice {
+  margin-top: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #8c8c8c;
+  background: #f5f5f5;
+  border-radius: 6px;
+  line-height: 1.6;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .result-container {
@@ -1486,6 +1801,19 @@ const drawRoutes = (AMap: any, attractions: any[]) => {
   .page-header {
     flex-direction: column;
     gap: 16px;
+  }
+
+  .candidate-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .price-slider-row {
+    flex-wrap: wrap;
+  }
+
+  .slider-value {
+    text-align: left;
   }
 }
 </style>
